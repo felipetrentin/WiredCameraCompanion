@@ -3,12 +3,12 @@
 #include "cam_pins.h"
 #include "FS.h"                // SD Card ESP32
 #include "SD_MMC.h"            // SD Card ESP32
+#include <Wire.h>
 
 camera_config_t config;
 int sensorPID;
-// Critical error string; if set during init (camera hardware failure) it
-// will be returned for all http requests
-String critERR = "";
+
+TwoWire satbus = TwoWire(0);
 
 void StartCamera()
 {
@@ -55,9 +55,6 @@ void StartCamera()
         periph_module_disable(PERIPH_I2C1_MODULE);
         periph_module_reset(PERIPH_I2C0_MODULE);
         periph_module_reset(PERIPH_I2C1_MODULE);
-        // And set the error text for the UI
-        critERR = "<h1>Error!</h1><hr><p>Camera module failed to initialise!</p><p>Please reset (power off/on) the camera.</p>";
-        critERR += "<p>We will continue to reboot once per minute since this error sometimes clears automatically.</p>";
     } else {
         Serial.println("Camera init succeeded");
 
@@ -129,12 +126,18 @@ void StartCamera()
     }
     // We now have camera with default init
 }
+
 void setup()
 {
+    //set pins
     pinMode(LED_PIN, OUTPUT);
     pinMode(LAMP_PIN, OUTPUT);
+    //turn on config LED
     digitalWrite(LED_PIN, LED_ON);
-    Serial.begin(115200);
+    
+    Serial.begin(115200);// BAUD rate
+    satbus.setPins(12, 13);
+    satbus.begin(0xA0);
     // Warn if no PSRAM is detected (typically user error with board selection in the IDE)
     if(!psramFound()){
         Serial.println("\r\nFatal Error; Halting");
@@ -143,8 +146,11 @@ void setup()
             delay(1000);
         }
     }
-    StartCamera();
+    StartCamera(); //initialize cam
     digitalWrite(LED_PIN, LED_OFF);
+
+    //start pic caputre
+
     digitalWrite(LAMP_PIN, LED_ON);
     
     Serial.println("Starting SD Card");
@@ -176,7 +182,7 @@ void setup()
         Serial.printf("Saved file to path: %s\n", path.c_str());
     }
     file.close();
-    esp_camera_fb_return(fb); 
+    esp_camera_fb_return(fb); //free memory?
 }
 
 void loop()
