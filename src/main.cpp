@@ -1,14 +1,21 @@
 #include <Arduino.h>
 #include <esp_camera.h>
 #include "cam_pins.h"
+//#define sdcard
+#ifdef sdcard
 #include "FS.h"                // SD Card ESP32
 #include "SD_MMC.h"            // SD Card ESP32
+#endif
 #include <Wire.h>
 
 camera_config_t config;
 int sensorPID;
 
 TwoWire satbus = TwoWire(0);
+camera_fb_t * fb = NULL;
+
+uint packetsQuantity = 0;
+uint currentPacket = 0;
 
 void StartCamera()
 {
@@ -73,7 +80,7 @@ void StartCamera()
 
         // OV3660 initial sensors are flipped vertically and colors are a bit saturated
         if (sensorPID == OV2640_PID) {
-            s->set_brightness(s, 1);  //up the blightness just a bit
+            s->set_brightness(s, -2);  //up the blightness just a bit
             s->set_whitebal(s, 1); //turn on white balance
             s->set_wb_mode(s, 0); //white balance to auto
         }
@@ -127,6 +134,31 @@ void StartCamera()
     // We now have camera with default init
 }
 
+void receiveEvent(int howMany)
+{
+  while(1 < satbus.available()) // loop through all but the last
+  {
+    char c = satbus.read(); // receive byte as a character
+    Serial.print(c);         // print the character
+  }
+  int x = satbus.read();    // receive byte as an integer
+  Serial.println(x);         // print the integer
+}
+#define packetSize 16
+void sendData(){
+    if(currentPacket > packetsQuantity or fb == nullptr){
+        return;
+    }
+    digitalWrite(LED_PIN, LED_ON);
+    satbus.write(fb->buf+(currentPacket*packetSize), packetSize);
+    log_print_buf(fb->buf+(currentPacket*packetSize), packetSize);
+    Serial.print("packet ");
+    Serial.print(currentPacket);
+    Serial.print(" out of ");
+    Serial.println(packetsQuantity);
+    currentPacket ++;
+    digitalWrite(LED_PIN, LED_OFF);
+}
 void setup()
 {
     //set pins
@@ -134,10 +166,6 @@ void setup()
     pinMode(LAMP_PIN, OUTPUT);
     //turn on config LED
     digitalWrite(LED_PIN, LED_ON);
-    
-    Serial.begin(115200);// BAUD rate
-    satbus.setPins(12, 13);
-    satbus.begin(0xA0);
     // Warn if no PSRAM is detected (typically user error with board selection in the IDE)
     if(!psramFound()){
         Serial.println("\r\nFatal Error; Halting");
@@ -147,14 +175,24 @@ void setup()
         }
     }
     StartCamera(); //initialize cam
+    digitalWrite(LAMP_PIN, HIGH);
+    fb = esp_camera_fb_get();
+    packetsQuantity = ((uint)(fb->len / packetSize))+1; //round up num of packets
+    Serial.print("picture taken, ");
+    Serial.print(fb->len, DEC);
+    Serial.print(" bytes divided in ");
+    Serial.print(packetsQuantity);
+    Serial.println(" packets");
+    Serial.begin(115200);// BAUD rate
+    satbus.begin(0x30, 15, 13, 400000); 
+    satbus.onReceive(receiveEvent);
+    satbus.onRequest(sendData);
     digitalWrite(LED_PIN, LED_OFF);
-
     //start pic caputre
-
-    digitalWrite(LAMP_PIN, LED_ON);
-    
+    #ifdef sdcard
+    //digitalWrite(LAMP_PIN, HIGH);
     Serial.println("Starting SD Card");
-    if(!SD_MMC.begin()){
+    if(!SD_MMC.begin("/sdcard", true)){
         Serial.println("SD Card Mount Failed");
         return;
     }
@@ -164,10 +202,9 @@ void setup()
         Serial.println("No SD Card attached");
         return;
     }
-
-    camera_fb_t * fb = NULL;
+    
     fb = esp_camera_fb_get();
-    digitalWrite(LAMP_PIN, LED_OFF);
+    //digitalWrite(LAMP_PIN, LOW);
     String path = "/picture.jpg";
 
     fs::FS &fs = SD_MMC; 
@@ -182,10 +219,14 @@ void setup()
         Serial.printf("Saved file to path: %s\n", path.c_str());
     }
     file.close();
-    esp_camera_fb_return(fb); //free memory?
+    
+    #endif
+    esp_camera_deinit();
+    digitalWrite(LAMP_PIN, LOW);
 }
 
 void loop()
 {
     // put your main code here, to run repeatedly:
+    delay(1);
 }
