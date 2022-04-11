@@ -56,9 +56,9 @@ void StartCamera()
     config.pixel_format = PIXFORMAT_JPEG;
     // config.grab_mode = CAMERA_GRAB_LATEST;
     if (psramFound()){
-        config.frame_size = FRAMESIZE_SXGA;
-        config.jpeg_quality = 10;
-        config.fb_count = 2;
+        config.frame_size = FRAMESIZE_UXGA;
+        config.jpeg_quality = 30;
+        config.fb_count = 1;
     }else{
         config.frame_size = FRAMESIZE_SVGA;
         config.jpeg_quality = 12;
@@ -97,6 +97,7 @@ void StartCamera()
             s->set_brightness(s, 1);  //up the blightness just a bit
             s->set_whitebal(s, 1); //turn on white balance
             s->set_wb_mode(s, 0); //white balance to auto
+            s->set_special_effect(s, 0);
         }
         // M5 Stack Wide has special needs
         #if defined(CAMERA_MODEL_M5STACK_WIDE)
